@@ -1,0 +1,173 @@
+# ChantierMétéo
+
+**Sous-titre :** Analyse météorologique et aide à la planification des travaux de génie civil.
+
+Application pédagogique Streamlit pour étudiants et professionnels du BTP. Les seuils de compatibilité météo sont réglés par l'utilisateur : ils **ne sont pas des normes de sécurité**.
+
+## Ce que fait l'application
+
+- **Tableau de bord** : chantiers, données et actions rapides.
+- **Mes chantiers** : création, modification, suppression et sélection de projets.
+- **Analyse météorologique** : géocodage Open-Meteo, récupération d'archives et prévisions journalières, import et édition CSV/XLSX, statistiques, histogrammes, tendances, provenance.
+- **Planification météo** : définition d'activités et de critères, classement des journées, calendrier et comparaison de dates de démarrage.
+- **Probabilités et scénarios** : dépassements, fenêtres glissantes, bootstrap de blocs et Monte-Carlo reproductible, sensibilité aux seuils.
+- **Comprendre et tester** : jeu fictif, formules expliquées et procédure exacte pour démonstration.
+
+**Aucune inscription, aucune API secrète.** Le jeu fictif fonctionne sans réseau. Les données réelles Open-Meteo requièrent Internet.
+
+## Identité visuelle — Control Center (édition 2)
+
+Cette version remplace les grands bandeaux répétitifs par une interface inspirée d’un **poste de pilotage de chantier** : navigation latérale bleu nuit, accueil immersif, cartes d’indicateurs, graphique pluie/seuil, synthèse des activités et calendrier de compatibilité. Les autres rubriques disposent d’en-têtes plus compacts, de sections hiérarchisées, de graphiques harmonisés et de cartes de projets. Le mode **Clair / Sombre** est accessible dans la barre latérale.
+
+Sur petit écran, les cartes du tableau de bord passent à deux colonnes, le calendrier passe à trois colonnes et le texte se réorganise. Les graphiques Plotly utilisent la largeur du conteneur et des tailles de police réduites pour la lisibilité. Les motifs détaillés restent accessibles dans le tableau sous le calendrier. Aucun visuel n’est présenté comme une prévision réelle lorsqu’il provient de l’exemple fictif.
+
+Le tableau de bord utilise les informations de la session : changer de chantier, modifier un critère ou remplacer une série météo entraîne un nouveau calcul lors de l’actualisation de la page.
+
+## Prérequis
+
+Version recommandée **Python 3.11** sous Windows 10/11, Git et Visual Studio Code. Les dépendances de `requirement.text` ont été choisies avec des plages de versions compatibles, mais votre configuration et les dernières versions de paquets peuvent nécessiter une vérification supplémentaire.
+
+### 1. Ouvrir le bon dossier
+
+1. Téléchargez et décompressez `ChantierMeteo.zip`.
+2. Dans VS Code, sélectionnez **Fichier > Ouvrir un dossier... > ChantierMeteo**.
+3. Dans VS Code, sélectionnez **Terminal > Nouveau terminal** (Ctrl+Maj+ù selon clavier).
+4. Vérifiez la présence des fichiers `app.py`, `requirement.text` et `README`.
+
+### 2. Environnement virtuel (recommandé)
+
+Dans le terminal PowerShell :
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirement.text
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Ou, avec Python déjà sélectionné dans VS Code :
+
+```powershell
+python -m pip install -r requirement.text
+python -m streamlit run app.py
+```
+
+Streamlit affiche l'adresse locale, généralement `http://localhost:8501` **si le port est libre**. Ouvrez l'adresse effectivement affichée par votre terminal. `Ctrl+C` arrête le serveur.
+
+### Problèmes d'installation
+
+- `python` introuvable : installez Python 3.11 depuis python.org ; réouvrez le terminal et essayez `py -3.11`.
+- `No module named streamlit` : assurez-vous d'utiliser **le même Python** pour `pip` et le lancement ; réinstallez depuis `requirement.text`.
+- Problème PowerShell « scripts are disabled » : utilisez le chemin direct `.venv\Scripts\python.exe` comme ci-dessus, sans activer l'environnement.
+- API impossible / ville introuvable : vérifiez Internet, les coordonnées et la période ; testez l'exemple fictif ou importez des données.
+- Port 8501 occupé : utilisez `python -m streamlit run app.py --server.port 8502`.
+- Erreur Excel : vérifiez que `openpyxl` est installé, que le fichier est un véritable XLSX, et que le CSV est en UTF-8.
+
+## Données et conventions
+
+L'API historique `https://archive-api.open-meteo.com/v1/archive` retourne des séries issues de réanalyses/modèles, pas des observations garanties sur la parcelle. Les prévisions proviennent de `https://api.open-meteo.com/v1/forecast` (jusqu'à 16 jours par requête dans l'application). Géocodage : `https://geocoding-api.open-meteo.com/v1/search`.
+
+**Fuseau :** `Africa/Douala` pour les jours civils 00:00 à 24:00, avec dates ISO AAAA-MM-JJ. Les précipitations sont exprimées en mm/j ; température en °C ; vent maximal en km/h. Une probabilité de pluie en % fournie par une prévision n'est **pas** une fréquence historique de jours défavorables.
+
+**Import :** `date` obligatoire, au moins une colonne parmi `precip_mm`, `tmin_c`, `tmax_c`, `wind_kmh`, `humidity_pct`, `rain_probability_pct`. Noms équivalents Open-Meteo reconnus. Les doublons de jours sont refusés. Dates ISO obligatoires. Pluie et vent négatifs refusés ; humidité et probabilités hors [0,100] refusées ; tmin>tmax refusé. Valeurs manquantes autorisées, jamais remplacées fictivement.
+
+La classification est **Défavorable** si pluie ≥ seuil, température minimale < limite, température maximale > limite ou vent > limite pour un critère activé. Sinon **Indéterminé** s'il manque des valeurs requises ; autrement **Compatible**. Une violation déjà connue demeure défavorable même si d'autres variables sont absentes. Les jours sans mesures ou hors horizon sont indéterminés. Le classement ne remplace ni analyse de sécurité ni normes applicables.
+
+## Statistiques et probabilités
+
+- Moyenne : somme des n valeurs / n ; variance/écart-type : estimateurs d'échantillon avec n−1 (pour n>1).
+- Fréquence de pluie ≥ x : nombre de jours avec mesure ≥ x divisé par nombre de mesures valides.
+- Fenêtres glissantes : dates consécutives de k jours, entièrement renseignées ; une fenêtre compte comme événement si au moins un jour est défavorable. Les fenêtres peuvent se chevaucher et ne sont pas indépendantes.
+- Monte-Carlo : indisponible sur un jeu de prévisions Open-Meteo ; sélection avec remise de blocs historiques complets contenant des indicateurs 0/1 défavorables, concaténation, troncature à l'horizon choisi ; chaque scénario garde son nombre de jours défavorables, y compris zéro. Les blocs tirés sont indépendants, les jours dans chaque bloc non. Le modèle ne restitue pas nécessairement la saisonnalité ni la tendance climatique. Il ne prévoit aucune date réelle. Erreur-type conditionnelle : sqrt(p*(1-p)/N). Quantiles de comptes entiers avec méthode `higher`.
+
+## Exemple fictif, valeurs de référence
+
+Dans le tableau de bord, cliquez sur **« 🧪 Charger l'exemple fictif »**. Il crée un chantier-école **explicitement fictif** à Yaoundé (20–29 octobre 2026), avec 10 pluies :
+
+`0, 4, 12, 0, 8, 25, 1, 0, 16, 3` (mm/j).
+
+Vérification indépendante : `somme = 69 mm`, `moyenne = 6,9 mm/j`, `pluie ≥ 10 mm/j = 3 jours`, `fréquence = 3/10 = 30 %`. Sur les 5 premiers jours du terrassement (limite pluie ≥ 10), **4 jours compatibles** et **1 défavorable**. Avec fenêtres de 3 jours sur les 10 dates, **8 fenêtres sur 8** contiennent un dépassement. Retrouvez les gestes exacts dans **« 🎓 Comprendre et tester »**.
+
+Le bouton **« 🧹 Réinitialiser l'exemple fictif »** supprime uniquement ce chantier ; vos autres projets ne sont pas touchés. L'exemple ne contient aucune donnée personnelle ni observation réelle.
+
+## Stockage / confidentialité
+
+Par choix de conception, les projets et leurs mesures sont conservés uniquement dans `st.session_state` dans la session Streamlit courante. **Il n'y a pas de base de données durable ni de partage entre les sessions.** Exportez régulièrement un **JSON** via « Mes chantiers » ou la barre latérale. La restauration JSON demande une confirmation explicite, puis remplace les projets de la session. Un redémarrage ou une fermeture peut effacer les données non exportées.
+
+**Ne saisissez pas de données privées ou sensibles** dans un service public sans un dispositif d'authentification, d'accès et de stockage adapté. Le disque temporaire d'un hébergement Streamlit **n'est pas une base durable**. Aucun secret n'est enregistré dans le code.
+
+## Exports
+
+- CSV UTF-8 (avec BOM pour Excel).
+- Excel XLSX : onglets `Donnees`, `Statistiques` et `Provenance`.
+- PDF : rapport A4 avec provenance, statistiques, tableau de classement éventuel, limites, pagination et accents quand un TTF adéquat est présent ; le générateur applique un repli typographique selon le système.
+- JSON : sauvegarde versionnée de tous les chantiers ; import validé avec limite 8 Mo.
+
+Les exports sont déclenchés par l'utilisateur, ne sont pas stockés dans le dossier livré et ne sont pas automatiquement publiés.
+
+## Déploiement GitHub → Streamlit Community Cloud
+
+**Attention :** le dossier livré contient exactement `app.py`, `requirement.text`, `README` comme demandé. Streamlit Community Cloud recherche un nom de fichier reconnu tel que **`requirements.txt`**, et **pas** `requirement.text`. Faites une **copie séparée** du projet destinée au dépôt GitHub puis ajoutez-y une copie du fichier :
+
+```powershell
+Copy-Item requirement.text requirements.txt
+```
+
+Placez ensuite ces fichiers dans votre copie de déploiement et lancez dans cette copie :
+
+```bash
+git init
+git branch -M main
+git add .
+git commit -m "Initialisation ChantierMétéo"
+git remote add origin https://github.com/VOTRE_COMPTE/VOTRE_DEPOT.git
+git remote -v
+git branch --show-current
+git push -u origin main
+```
+
+Créez auparavant un dépôt **vide** sur GitHub. Remplacez l'adresse fictive `VOTRE_COMPTE/VOTRE_DEPOT` par votre **vraie** adresse GitHub ; si le remote existe déjà, vérifiez-le puis corrigez-le avec `git remote set-url origin URL` au lieu de répéter `git remote add`. Authentifiez-vous avec le mécanisme GitHub approprié, et évitez de publier des sauvegardes privées.
+
+1. Connectez-vous sur https://share.streamlit.io/.
+2. Cliquez sur **Create app** / déployer une application depuis GitHub.
+3. Choisissez votre dépôt, votre branche (`main`) et le fichier principal (`app.py`).
+4. Sélectionnez Python 3.11 lorsqu'il est proposé.
+5. Déployez puis consultez **Manage app → Logs** en cas d'échec de construction, d'import ou de connexion API.
+6. Conservez l'URL réellement affichée par Streamlit. Aucune URL de déploiement n'est fournie d'avance.
+
+Mises à jour :
+
+```bash
+git status
+git add .
+git commit -m "Description de la modification"
+git push
+```
+
+N'oubliez pas de maintenir `requirements.txt` à jour dans la copie destinée au Cloud si vous modifiez `requirement.text`.
+
+## Vérifications effectuées pour cette livraison
+
+Les tests automatiques des fonctions et de la nouvelle mise en page (logique des six rubriques) ont été effectués dans un environnement **Python 3.13.5** avec NumPy, Pandas, Plotly, OpenPyXL et ReportLab. Les valeurs fictives (10 observations, 6,9 mm/j, 3/10 = 30 %, 8 fenêtres sur 8), les dates manquantes, les limites, la répétabilité des simulations, la séparation des projets réels/fictifs, le JSON, le CSV et l'Excel ont été contrôlés. Des tests de cheminement des six pages ont été exécutés avec des composants Streamlit **simulés**, et non dans un navigateur. Des réponses Open-Meteo **simulées** ont servi à tester l'analyse des champs et paramètres des requêtes, pas à vérifier le service en ligne. Un PDF A4 d'une page et un rapport de quatre pages ont été générés ; le rapport de quatre pages a fait l'objet d'un contrôle de pagination et de position des blocs, et le premier PDF a été inspecté visuellement.
+
+Un **aperçu HTML/CSS autonome** du nouveau tableau de bord a également été contrôlé dans Chromium aux largeurs 1 450 px (ordinateur) et 390 px (mobile) : aucun débordement horizontal n’a été constaté. Cet aperçu est une vérification de mise en page des composants CSS, **pas** un test du rendu final de Streamlit.
+
+**Non vérifié dans cet environnement :** l'installation effective de Streamlit (paquet absent, téléchargement Internet inaccessible), l'affichage véritable de Streamlit sur un navigateur PC/mobile, les interactions réelles des formulaires dans Streamlit, et les appels en direct vers les API Open-Meteo. Avant remise définitive, validez ces points sur votre ordinateur avec Python 3.11 et Internet. Aucune adresse locale ni URL publique n'est annoncée car le serveur n'a pas été lancé ici.
+
+## Vérification recommandée avant la soutenance
+
+1. Charger l'exemple fictif et vérifier 6,9 mm/j et 30 %.
+2. Ouvrir planification et vérifier le classement des 5 premiers jours.
+3. Exécuter deux fois le Monte-Carlo avec même graine et vérifier l'identité des résultats.
+4. Modifier un seuil et vérifier la classification ; modifier les paramètres Monte-Carlo et vérifier que l'ancien résultat n'est plus affiché.
+5. Exporter CSV/XLSX/PDF/JSON, inspecter les fichiers et restaurer dans une session vierge.
+6. Vérifier le rendu PC et téléphone, les dates de l'API historique, l'absence d'Internet, les dates absentes et les champs invalides.
+
+## Références techniques
+
+- Open-Meteo Historical : https://open-meteo.com/en/docs/historical-weather-api
+- Open-Meteo Forecast : https://open-meteo.com/en/docs
+- Open-Meteo Geocoding : https://open-meteo.com/en/docs/geocoding-api
+- Streamlit Community Cloud : https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies
+
+**Avertissement :** cet outil d'enseignement ne fournit pas de prescriptions normatives, de garantie de conditions favorables, d'autorisation de démarrer des travaux ou d'évaluation complète des risques professionnels.
